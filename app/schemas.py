@@ -1,7 +1,7 @@
 """Pydantic schemas for request/response validation."""
 
 from typing import List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class ResumeAnalysisRequest(BaseModel):
@@ -12,12 +12,11 @@ class ResumeAnalysisRequest(BaseModel):
 
 class KeywordMatch(BaseModel):
     """Schema for a single keyword match."""
+    model_config = ConfigDict(json_schema_extra={"example": {"keyword": "Python", "frequency": 5, "relevance_score": 0.85}})
+
     keyword: str
     frequency: int
     relevance_score: float = Field(..., ge=0.0, le=1.0)
-    
-    class Config:
-        schema_extra = {"example": {"keyword": "Python", "frequency": 5, "relevance_score": 0.85}}
 
 
 class ResumeAnalysis(BaseModel):
