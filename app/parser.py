@@ -1,8 +1,20 @@
 """Resume parsing module for extracting structured data from resume text."""
 
 import re
-from typing import Dict, List
+import os
+from typing import Dict, List, Optional
+from pathlib import Path
 from app.schemas import ParsedResume
+
+try:
+    import pdfplumber
+except ImportError:
+    pdfplumber = None
+
+try:
+    from docx import Document
+except ImportError:
+    Document = None
 
 
 class ResumeParser:
@@ -20,6 +32,106 @@ class ResumeParser:
     def __init__(self):
         """Initialize the resume parser."""
         pass
+    
+    def parse_file(self, file_path: str) -> ParsedResume:
+        """
+        Parse a resume file in multiple formats (.txt, .pdf, .docx).
+        
+        Args:
+            file_path: Path to the resume file
+            
+        Returns:
+            ParsedResume: Structured resume data
+            
+        Raises:
+            FileNotFoundError: If file doesn't exist
+            ValueError: If file format is not supported
+        """
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"Resume file not found: {file_path}")
+        
+        file_extension = Path(file_path).suffix.lower()
+        
+        if file_extension == '.txt':
+            resume_text = self._read_txt_file(file_path)
+        elif file_extension == '.pdf':
+            resume_text = self._read_pdf_file(file_path)
+        elif file_extension == '.docx':
+            resume_text = self._read_docx_file(file_path)
+        else:
+            raise ValueError(f"Unsupported file format: {file_extension}. Supported formats: .txt, .pdf, .docx")
+        
+        return self.parse(resume_text)
+    
+    def _read_txt_file(self, file_path: str) -> str:
+        """
+        Read a .txt resume file.
+        
+        Args:
+            file_path: Path to the .txt file
+            
+        Returns:
+            str: The contents of the .txt file
+        """
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file:
+                return file.read()
+        except UnicodeDecodeError:
+            # Fallback to latin-1 encoding
+            with open(file_path, 'r', encoding='latin-1') as file:
+                return file.read()
+    
+    def _read_pdf_file(self, file_path: str) -> str:
+        """
+        Read a .pdf resume file using pdfplumber.
+        
+        Args:
+            file_path: Path to the .pdf file
+            
+        Returns:
+            str: Extracted text from the PDF
+            
+        Raises:
+            ImportError: If pdfplumber is not installed
+        """
+        if pdfplumber is None:
+            raise ImportError("pdfplumber is not installed. Install it with: pip install pdfplumber")
+        
+        try:
+            text = ""
+            with pdfplumber.open(file_path) as pdf:
+                for page in pdf.pages:
+                    extracted_text = page.extract_text()
+                    if extracted_text:
+                        text += extracted_text + "\n"
+            return text.strip()
+        except Exception as e:
+            raise ValueError(f"Error reading PDF file: {str(e)}")
+    
+    def _read_docx_file(self, file_path: str) -> str:
+        """
+        Read a .docx resume file using python-docx.
+        
+        Args:
+            file_path: Path to the .docx file
+            
+        Returns:
+            str: Extracted text from the .docx file
+            
+        Raises:
+            ImportError: If python-docx is not installed
+        """
+        if Document is None:
+            raise ImportError("python-docx is not installed. Install it with: pip install python-docx")
+        
+        try:
+            doc = Document(file_path)
+            text = ""
+            for paragraph in doc.paragraphs:
+                text += paragraph.text + "\n"
+            return text.strip()
+        except Exception as e:
+            raise ValueError(f"Error reading DOCX file: {str(e)}")
     
     def parse(self, resume_text: str) -> ParsedResume:
         """

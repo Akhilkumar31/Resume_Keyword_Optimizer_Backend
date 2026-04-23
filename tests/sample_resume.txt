@@ -1,0 +1,37 @@
+JOHN DOE
+john.doe@example.com | (555) 123-4567 | linkedin.com/in/johndoe
+
+PROFESSIONAL SUMMARY
+Experienced software engineer with 5 years of expertise in full-stack development and cloud technologies. Proven track record of designing and implementing scalable applications.
+
+WORK EXPERIENCE
+Senior Software Engineer - Tech Company Inc.
+January 2021 - Present
+• Developed microservices architecture using Python and Django
+• Led team of 5 engineers in agile environment
+• Improved application performance by 40%
+• Mentored junior developers
+
+Software Engineer - StartUp LLC
+June 2019 - December 2020
+• Built REST APIs using FastAPI and PostgreSQL
+• Implemented CI/CD pipelines using Docker and Kubernetes
+• Collaborated with cross-functional teams
+• Reduced deployment time by 60%
+
+TECHNICAL SKILLS
+Languages: Python, JavaScript, Java, SQL
+Frameworks: FastAPI, Django, React, Node.js
+Cloud: AWS, Google Cloud Platform, Azure
+Databases: PostgreSQL, MongoDB, Redis
+Tools: Docker, Kubernetes, Git, Jenkins
+
+EDUCATION
+Bachelor of Science in Computer Science
+University of Technology
+Graduated: May 2019
+GPA: 3.8/4.0
+
+CERTIFICATIONS
+AWS Certified Solutions Architect
+Kubernetes Application Developer (CKAD)
