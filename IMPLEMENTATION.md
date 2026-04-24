@@ -1,4 +1,33 @@
-# Resume File Format Support Implementation
+# Resume Keyword Optimizer - Implementation Status
+
+## Day 5: Keyword Extraction Logic (✓ COMPLETE)
+
+### Features Implemented
+1. **Enhanced Stopword Removal** - 70+ comprehensive stopwords categorized by type
+2. **Top Keywords Extraction** - Extract top N keywords with frequencies from any text
+3. **Job Description Analysis** - Analyze JD structure and extract key requirements
+4. **Resume vs JD Comparison** - Detailed matching with multiple similarity metrics
+5. **Intelligent Keyword Matching** - Exact + partial/variation matching for technical terms
+
+### Key Metrics
+- Match Score (0.0-1.0): Percentage of JD keywords in resume
+- Keyword Coverage: Percentage of required keywords covered
+- Jaccard Similarity: Set-based similarity (0.0-1.0)
+- Missing Keywords: Top 15 skills/requirements not in resume
+
+### New API Endpoints
+- `POST /keywords/extract` - Extract top keywords from text
+- `POST /keywords/analyze-jd` - Analyze job description requirements
+- `POST /compare` - Compare resume to job description (main feature)
+
+### Test Coverage
+- 26 new comprehensive tests for keyword analysis
+- All 50 total tests passing (48 passed, 2 skipped)
+- Coverage: extraction, analysis, comparison, similarity, edge cases
+
+---
+
+# Resume File Format Support Implementation (Day 4)
 
 ## Overview
 This implementation adds comprehensive multi-format resume file reading support to the Resume Keyword Optimizer backend, along with extensive testing.

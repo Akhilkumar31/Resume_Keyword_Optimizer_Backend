@@ -155,6 +155,121 @@ async def upload_resume(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/keywords/extract", tags=["Keywords"])
+async def extract_keywords(request: ResumeAnalysisRequest):
+    """
+    Extract top keywords from text (resume or job description).
+    
+    Args:
+        request: ResumeAnalysisRequest with resume_text containing the text to analyze
+        
+    Returns:
+        Dictionary with top keywords and frequency
+        
+    Raises:
+        HTTPException: If text is empty
+    """
+    try:
+        if not request.resume_text.strip():
+            raise HTTPException(status_code=400, detail="Text cannot be empty")
+        
+        logger.info("Extracting keywords from text")
+        
+        top_keywords = keyword_analyzer.extract_top_keywords(request.resume_text, top_n=20)
+        
+        return {
+            "top_keywords": [{"keyword": kw, "frequency": freq} for kw, freq in top_keywords],
+            "total_unique_keywords": len(top_keywords)
+        }
+    
+    except Exception as e:
+        logger.error(f"Error extracting keywords: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/keywords/analyze-jd", tags=["Keywords"])
+async def analyze_job_description(request: ResumeAnalysisRequest):
+    """
+    Analyze a job description to extract key requirements.
+    
+    Args:
+        request: ResumeAnalysisRequest with resume_text containing the job description
+        
+    Returns:
+        Dictionary with job description analysis including top keywords
+        
+    Raises:
+        HTTPException: If job description is empty
+    """
+    try:
+        if not request.resume_text.strip():
+            raise HTTPException(status_code=400, detail="Job description cannot be empty")
+        
+        logger.info("Analyzing job description")
+        
+        analysis = keyword_analyzer.analyze_job_description(request.resume_text, top_n=30)
+        
+        return {
+            "top_keywords": [{"keyword": kw, "frequency": freq} for kw, freq in analysis["top_keywords"]],
+            "total_unique_keywords": analysis["total_keywords"],
+            "keyword_frequency": analysis["keyword_frequency"]
+        }
+    
+    except Exception as e:
+        logger.error(f"Error analyzing job description: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/compare", tags=["Comparison"])
+async def compare_resume_to_jd(request: ResumeAnalysisRequest):
+    """
+    Perform detailed comparison between resume and job description.
+    
+    Args:
+        request: ResumeAnalysisRequest with both resume_text and job_description
+        
+    Returns:
+        Dictionary with detailed comparison metrics including:
+        - Match score
+        - Matched keywords
+        - Missing keywords
+        - Keyword coverage percentage
+        - Jaccard similarity
+        
+    Raises:
+        HTTPException: If either resume or job description is empty
+    """
+    try:
+        if not request.resume_text.strip():
+            raise HTTPException(status_code=400, detail="Resume text cannot be empty")
+        if not request.job_description or not request.job_description.strip():
+            raise HTTPException(status_code=400, detail="Job description cannot be empty")
+        
+        logger.info("Comparing resume to job description")
+        
+        comparison = keyword_analyzer.compare_resume_to_jd(
+            request.resume_text,
+            request.job_description
+        )
+        
+        return {
+            "match_score": comparison["match_score"],
+            "matched_count": comparison["matched_count"],
+            "total_jd_keywords": comparison["total_jd_keywords"],
+            "missing_count": comparison["missing_count"],
+            "keyword_coverage_percentage": comparison["keyword_coverage"],
+            "jaccard_similarity": comparison["jaccard_similarity"],
+            "top_resume_keywords": [{"keyword": kw, "frequency": freq} for kw, freq in comparison["top_resume_keywords"]],
+            "top_jd_keywords": [{"keyword": kw, "frequency": freq} for kw, freq in comparison["top_jd_keywords"]],
+            "matched_keywords": comparison["intersection_keywords"],
+            "missing_keywords": comparison["missing_keywords"]
+        }
+    
+    except Exception as e:
+        logger.error(f"Error comparing resume to job description: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request, exc):
     """Handle HTTP exceptions."""
