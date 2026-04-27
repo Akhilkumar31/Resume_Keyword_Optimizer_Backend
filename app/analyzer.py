@@ -44,34 +44,54 @@ class KeywordAnalyzer:
     
     def extract_top_keywords(self, text: str, top_n: int = 20) -> List[Tuple[str, int]]:
         """
-        Extract top keywords from text.
+        Extract top N most frequent meaningful keywords from text.
+        
+        Requirements met:
+        - Normalizes text (lowercase, removes special characters)
+        - Removes stopwords from text
+        - Tokenizes words properly using regex patterns
+        - Counts word frequency using collections.Counter
+        - Ignores very short words (length < 3)
+        - Returns keywords sorted by importance (frequency)
         
         Args:
             text: Text to extract keywords from
-            top_n: Number of top keywords to return
+            top_n: Number of top keywords to return (default: 20)
             
         Returns:
-            List of tuples (keyword, frequency)
+            List[Tuple[str, int]]: List of (keyword, frequency) tuples sorted by frequency descending
         """
         keywords = self._extract_keywords(text)
+        # Counter.most_common() returns list sorted by frequency (importance)
         return keywords.most_common(top_n)
     
     def analyze_job_description(self, job_description: str, top_n: int = 30) -> Dict:
         """
         Analyze job description to extract key information.
         
+        Uses improved keyword extraction that:
+        - Normalizes and cleans text
+        - Removes stopwords
+        - Handles technical terms and special characters
+        - Counts frequencies with collections.Counter
+        - Returns top keywords sorted by frequency (importance)
+        
         Args:
             job_description: The job description text
-            top_n: Number of top keywords to extract
+            top_n: Number of top keywords to extract (default: 30)
             
         Returns:
-            Dictionary with analysis results
+            Dictionary with:
+            - top_keywords: List of (keyword, frequency) tuples sorted by importance
+            - total_keywords: Total count of unique keywords found
+            - keyword_frequency: Dict mapping keywords to their frequencies
         """
         top_keywords = self.extract_top_keywords(job_description, top_n)
+        keywords_counter = self._extract_keywords(job_description)
         
         return {
             'top_keywords': top_keywords,
-            'total_keywords': len(set(self._extract_keywords(job_description))),
+            'total_keywords': len(keywords_counter),
             'keyword_frequency': dict(top_keywords)
         }
     
@@ -193,25 +213,47 @@ class KeywordAnalyzer:
         """
         Extract keywords from text with intelligent stopword removal.
         
+        Performs the following steps:
+        1. Normalizes text (lowercase, removes special characters)
+        2. Tokenizes words properly using regex
+        3. Filters stopwords and very short words (length < 3)
+        4. Removes numeric-only tokens
+        5. Counts word frequencies using collections.Counter
+        
         Args:
             text: Text to extract keywords from
             
         Returns:
-            Counter: Count of extracted keywords
+            Counter: Count of extracted keywords sorted by frequency
         """
-        # Convert to lowercase
+        # Step 1: Normalize text - convert to lowercase
         text = text.lower()
         
-        # Extract single words and multi-word technical terms
-        # This regex captures words, hyphens, slashes, and plus signs (for C++, C#, etc.)
+        # Step 2: Remove special characters while preserving meaningful ones for technical terms
+        # Keep hyphens, forward slashes, and plus signs for terms like C++, C#, .NET, etc.
+        # Remove other punctuation like commas, periods, parentheses, etc.
+        text = re.sub(r'[^\w\s+#./\-]', ' ', text)
+        
+        # Step 3: Tokenize words properly
+        # This regex pattern captures:
+        # - Words with alphanumeric characters
+        # - Special sequences like C++, C#, .NET, Python-3, etc.
+        # - Words starting with a letter followed by any alphanumeric chars and optional special chars
         words = re.findall(r'\b[a-z][a-z0-9]*(?:[+#/.-][a-z0-9]+)*\b', text)
         
-        # Filter out stop words and very short words
-        keywords = [
-            word for word in words
-            if word not in self.stop_words and len(word) > 2 and not self._is_number(word)
-        ]
+        # Step 4: Filter keywords by multiple criteria
+        keywords = []
+        for word in words:
+            # Criteria for filtering:
+            # 1. Must not be a stopword
+            # 2. Must have length >= 3 (ignore very short words)
+            # 3. Must not be purely numeric
+            if (word not in self.stop_words and 
+                len(word) >= 3 and 
+                not self._is_number(word)):
+                keywords.append(word)
         
+        # Step 5: Count word frequencies and return sorted by importance
         return Counter(keywords)
     
     def _is_number(self, word: str) -> bool:
