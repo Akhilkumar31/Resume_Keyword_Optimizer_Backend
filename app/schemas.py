@@ -19,11 +19,18 @@ class KeywordMatch(BaseModel):
     relevance_score: float = Field(..., ge=0.0, le=1.0)
 
 
+class KeywordSuggestion(BaseModel):
+    """Schema for keyword synonym suggestions."""
+    keyword: str
+    suggestions: List[str] = Field(default_factory=list, description="List of synonym suggestions")
+
+
 class ResumeAnalysis(BaseModel):
     """Response schema for resume analysis."""
     total_keywords: int
     matched_keywords: List[KeywordMatch]
     missing_keywords: List[str] = Field(default_factory=list)
+    suggestions: List[KeywordSuggestion] = Field(default_factory=list, description="Synonym suggestions for missing keywords")
     match_score: float = Field(..., ge=0.0, le=1.0)
     recommendations: List[str] = Field(default_factory=list)
 

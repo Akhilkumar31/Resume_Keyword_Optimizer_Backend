@@ -3,14 +3,80 @@
 import re
 from typing import List, Dict, Tuple, Set
 from collections import Counter
-from app.schemas import KeywordMatch, ResumeAnalysis
+from app.schemas import KeywordMatch, ResumeAnalysis, KeywordSuggestion
 
 
 class KeywordAnalyzer:
     """Analyzes keywords in resumes and job descriptions."""
     
     def __init__(self):
-        """Initialize the keyword analyzer with comprehensive stopwords."""
+        """Initialize the keyword analyzer with comprehensive stopwords and synonym dictionary."""
+        # Synonym dictionary mapping keywords to their common synonyms/alternatives
+        self.synonym_dictionary = {
+            'javascript': ['js', 'ecmascript', 'node.js', 'nodejs'],
+            'python': ['py', 'python3'],
+            'typescript': ['ts'],
+            'react': ['reactjs', 'react.js'],
+            'vue': ['vuejs', 'vue.js'],
+            'angular': ['ng', 'angular.js'],
+            'node': ['nodejs', 'node.js'],
+            'database': ['db', 'sql', 'nosql'],
+            'sql': ['mysql', 'postgresql', 'mssql'],
+            'nosql': ['mongodb', 'redis', 'cassandra'],
+            'docker': ['containerization', 'containers'],
+            'kubernetes': ['k8s'],
+            'aws': ['amazon', 'amazon web services'],
+            'gcp': ['google cloud', 'google cloud platform'],
+            'azure': ['microsoft azure'],
+            'git': ['github', 'gitlab', 'bitbucket', 'version control'],
+            'rest': ['restful', 'api'],
+            'graphql': ['graph ql'],
+            'django': ['django rest framework'],
+            'flask': ['flask framework'],
+            'spring': ['spring boot', 'spring framework'],
+            'junit': ['testing', 'unit testing'],
+            'pytest': ['testing', 'unit testing'],
+            'jest': ['testing', 'javascript testing'],
+            'ci/cd': ['continuous integration', 'continuous deployment', 'devops'],
+            'devops': ['ci/cd', 'deployment'],
+            'agile': ['scrum', 'kanban'],
+            'scrum': ['agile', 'sprint'],
+            'management': ['manage', 'leading'],
+            'leadership': ['leading', 'management'],
+            'communication': ['collaborate', 'collaboration', 'teamwork'],
+            'problem solving': ['analytical', 'troubleshooting'],
+            'html': ['markup', 'web development'],
+            'css': ['styling', 'sass', 'scss'],
+            'sass': ['css', 'scss', 'styling'],
+            'react native': ['mobile development', 'react'],
+            'swift': ['ios', 'ios development'],
+            'kotlin': ['android', 'android development'],
+            'java': ['j2ee', 'enterprise java'],
+            'c++': ['cpp', 'c plus plus'],
+            'c#': ['csharp', 'c sharp'],
+            '.net': ['dotnet', 'microsoft dot net'],
+            'linux': ['unix', 'ubuntu'],
+            'windows': ['microsoft windows'],
+            'macos': ['mac', 'osx'],
+            'api': ['rest', 'graphql', 'integration'],
+            'microservices': ['service oriented', 'distributed systems'],
+            'machine learning': ['ml', 'ai', 'artificial intelligence'],
+            'ai': ['artificial intelligence', 'machine learning'],
+            'tensorflow': ['keras', 'deep learning'],
+            'pytorch': ['deep learning', 'neural networks'],
+            'data science': ['analytics', 'data analytics'],
+            'analytics': ['data analysis', 'business intelligence'],
+            'excel': ['spreadsheet', 'data management'],
+            'tableau': ['visualization', 'business intelligence'],
+            'power bi': ['visualization', 'business intelligence'],
+            'jira': ['project management', 'issue tracking'],
+            'confluence': ['documentation', 'wiki'],
+            'slack': ['communication', 'messaging'],
+            'jenkins': ['ci/cd', 'automation'],
+            'gitlab': ['git', 'version control', 'ci/cd'],
+            'github': ['git', 'version control'],
+        }
+        
         # Comprehensive set of stop words to filter out
         self.stop_words = {
             # Articles and prepositions
@@ -165,6 +231,7 @@ class KeywordAnalyzer:
         
         matched_keywords = []
         missing_keywords = []
+        suggestions = []
         match_score = 0.0
         recommendations = []
         
@@ -176,6 +243,9 @@ class KeywordAnalyzer:
             
             # Find missing keywords
             missing_keywords = self._find_missing_keywords(resume_keywords, job_keywords)
+            
+            # Generate suggestions for missing keywords
+            suggestions = self._get_suggestions_for_keywords(missing_keywords)
             
             # Calculate match score
             match_score = self._calculate_match_score(
@@ -205,6 +275,7 @@ class KeywordAnalyzer:
             total_keywords=len(resume_keywords),
             matched_keywords=matched_keywords,
             missing_keywords=missing_keywords,
+            suggestions=suggestions,
             match_score=match_score,
             recommendations=recommendations
         )
@@ -409,3 +480,37 @@ class KeywordAnalyzer:
             )
         
         return recommendations
+    
+    def _get_suggestions_for_keywords(self, keywords: List[str]) -> List:
+        """
+        Get synonym suggestions for a list of keywords.
+        
+        Args:
+            keywords: List of keywords to get suggestions for
+            
+        Returns:
+            List of KeywordSuggestion objects with synonym suggestions
+        """
+        suggestions = []
+        
+        for keyword in keywords:
+            keyword_lower = keyword.lower()
+            
+            # Check if keyword exists in synonym dictionary
+            if keyword_lower in self.synonym_dictionary:
+                synonym_list = self.synonym_dictionary[keyword_lower]
+                suggestions.append(KeywordSuggestion(
+                    keyword=keyword,
+                    suggestions=synonym_list
+                ))
+            else:
+                # Check for partial matches (e.g., if keyword contains a word in the dictionary)
+                for dict_key, dict_synonyms in self.synonym_dictionary.items():
+                    if dict_key in keyword_lower or keyword_lower in dict_key:
+                        suggestions.append(KeywordSuggestion(
+                            keyword=keyword,
+                            suggestions=dict_synonyms
+                        ))
+                        break
+        
+        return suggestions
