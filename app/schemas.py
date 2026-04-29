@@ -30,7 +30,7 @@ class ResumeAnalysis(BaseModel):
     total_keywords: int
     matched_keywords: List[KeywordMatch]
     missing_keywords: List[str] = Field(default_factory=list)
-    suggestions: List[KeywordSuggestion] = Field(default_factory=list, description="Synonym suggestions for missing keywords")
+    suggestions: dict = Field(default_factory=dict, description="Synonym suggestions for missing keywords (keyword -> list of synonyms)")
     match_score: float = Field(..., ge=0.0, le=1.0)
     recommendations: List[str] = Field(default_factory=list)
 

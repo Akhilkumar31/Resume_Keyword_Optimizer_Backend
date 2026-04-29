@@ -231,7 +231,7 @@ class KeywordAnalyzer:
         
         matched_keywords = []
         missing_keywords = []
-        suggestions = []
+        suggestions = {}
         match_score = 0.0
         recommendations = []
         
@@ -481,36 +481,31 @@ class KeywordAnalyzer:
         
         return recommendations
     
-    def _get_suggestions_for_keywords(self, keywords: List[str]) -> List:
+    def _get_suggestions_for_keywords(self, keywords: List[str]) -> dict:
         """
         Get synonym suggestions for a list of keywords.
+        
+        Returns a dictionary where keys are keywords and values are lists of synonyms.
         
         Args:
             keywords: List of keywords to get suggestions for
             
         Returns:
-            List of KeywordSuggestion objects with synonym suggestions
+            dict: Dictionary with keyword -> list of synonyms mapping
         """
-        suggestions = []
+        suggestions = {}
         
         for keyword in keywords:
             keyword_lower = keyword.lower()
             
             # Check if keyword exists in synonym dictionary
             if keyword_lower in self.synonym_dictionary:
-                synonym_list = self.synonym_dictionary[keyword_lower]
-                suggestions.append(KeywordSuggestion(
-                    keyword=keyword,
-                    suggestions=synonym_list
-                ))
+                suggestions[keyword] = self.synonym_dictionary[keyword_lower]
             else:
                 # Check for partial matches (e.g., if keyword contains a word in the dictionary)
                 for dict_key, dict_synonyms in self.synonym_dictionary.items():
                     if dict_key in keyword_lower or keyword_lower in dict_key:
-                        suggestions.append(KeywordSuggestion(
-                            keyword=keyword,
-                            suggestions=dict_synonyms
-                        ))
+                        suggestions[keyword] = dict_synonyms
                         break
         
         return suggestions
