@@ -1,6 +1,6 @@
 """Pydantic schemas for request/response validation."""
 
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field, ConfigDict
 
 
@@ -51,3 +51,65 @@ class JobDescriptionAnalysis(BaseModel):
     key_responsibilities: List[str]
     required_keywords: List[str]
     nice_to_have_keywords: List[str]
+
+
+class KeywordExtractResponse(BaseModel):
+    """Response schema for keyword extraction endpoint."""
+    top_keywords: List[Dict[str, Any]] = Field(
+        ...,
+        description="List of extracted keywords with their frequencies"
+    )
+    total_unique_keywords: int = Field(
+        ...,
+        description="Total count of unique keywords found"
+    )
+
+
+class JobDescriptionAnalysisResponse(BaseModel):
+    """Response schema for job description analysis endpoint."""
+    top_keywords: List[Dict[str, Any]] = Field(
+        ...,
+        description="List of top keywords from job description"
+    )
+    total_unique_keywords: int = Field(
+        ...,
+        description="Total unique keywords in job description"
+    )
+    keyword_frequency: Dict[str, int] = Field(
+        default_factory=dict,
+        description="Frequency map of all extracted keywords"
+    )
+
+
+class ComparisonMetrics(BaseModel):
+    """Schema for resume-to-JD comparison metrics."""
+    match_score: float = Field(..., ge=0.0, le=1.0, description="Overall match score")
+    matched_count: int = Field(..., description="Number of matched keywords")
+    total_jd_keywords: int = Field(..., description="Total unique keywords in job description")
+    missing_count: int = Field(..., description="Number of missing keywords from resume")
+    keyword_coverage_percentage: float = Field(
+        ...,
+        description="Percentage of job description keywords covered by resume"
+    )
+    jaccard_similarity: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Jaccard similarity score between resume and JD keywords"
+    )
+    top_resume_keywords: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Top keywords from resume"
+    )
+    top_jd_keywords: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Top keywords from job description"
+    )
+    matched_keywords: List[str] = Field(
+        default_factory=list,
+        description="Keywords present in both resume and job description"
+    )
+    missing_keywords: List[str] = Field(
+        default_factory=list,
+        description="Keywords from job description not found in resume"
+    )

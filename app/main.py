@@ -6,13 +6,25 @@ from fastapi.responses import JSONResponse
 from typing import Optional
 import logging
 
-from app.schemas import ResumeAnalysisRequest, ResumeAnalysis
+from app.schemas import (
+    ResumeAnalysisRequest, 
+    ResumeAnalysis,
+    KeywordExtractResponse,
+    JobDescriptionAnalysisResponse,
+    ComparisonMetrics
+)
 from app.parser import ResumeParser
 from app.analyzer import KeywordAnalyzer
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Constants
+MAX_UPLOAD_SIZE = 5 * 1024 * 1024  # 5MB
+SUPPORTED_FILE_FORMATS = ('.txt', '.pdf', '.docx')
+DEFAULT_TOP_N_KEYWORDS = 20
+DEFAULT_JD_TOP_N = 30
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -119,44 +131,66 @@ async def upload_resume(file: UploadFile = File(...)):
     """
     Upload and process a resume file.
     
+    Supported formats: .txt, .pdf, .docx
+    Maximum file size: 5MB
+    
     Args:
-        file: Resume file to upload (txt or pdf support planned)
+        file: Resume file to upload
         
     Returns:
-        Parsed resume data
+        Parsed resume data with sections, contact info, skills, experience, and education
         
     Raises:
-        HTTPException: If file type is not supported
+        HTTPException: If file type is not supported or file is too large
     """
     try:
         if not file.filename:
             raise HTTPException(status_code=400, detail="No file provided")
         
-        # Check file type (currently only text files)
-        if not file.filename.endswith(('.txt', '.pdf')):
+        # Check file type
+        if not file.filename.endswith(SUPPORTED_FILE_FORMATS):
             raise HTTPException(
                 status_code=400,
-                detail="Only .txt and .pdf files are supported"
+                detail=f"Only {', '.join(SUPPORTED_FILE_FORMATS)} files are supported"
             )
         
         # Read file content
         content = await file.read()
-        text_content = content.decode('utf-8')
+        
+        # Check file size
+        if len(content) > MAX_UPLOAD_SIZE:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File size exceeds maximum allowed size of 5MB"
+            )
+        
+        # Handle text file decoding
+        try:
+            text_content = content.decode('utf-8')
+        except UnicodeDecodeError:
+            # Try alternative encoding if UTF-8 fails
+            try:
+                text_content = content.decode('latin-1')
+            except UnicodeDecodeError:
+                raise HTTPException(
+                    status_code=400,
+                    detail="File must be valid UTF-8 or Latin-1 encoded text"
+                )
         
         # Parse the resume
         parsed = resume_parser.parse(text_content)
         
         return parsed
     
-    except UnicodeDecodeError:
-        raise HTTPException(status_code=400, detail="File must be valid text/UTF-8 encoded")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error uploading resume: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/keywords/extract", tags=["Keywords"])
-async def extract_keywords(request: ResumeAnalysisRequest):
+@app.post("/keywords/extract", response_model=KeywordExtractResponse, tags=["Keywords"])
+async def extract_keywords(request: ResumeAnalysisRequest) -> KeywordExtractResponse:
     """
     Extract top keywords from text (resume or job description).
     
@@ -164,7 +198,7 @@ async def extract_keywords(request: ResumeAnalysisRequest):
         request: ResumeAnalysisRequest with resume_text containing the text to analyze
         
     Returns:
-        Dictionary with top keywords and frequency
+        KeywordExtractResponse with top keywords and their frequencies
         
     Raises:
         HTTPException: If text is empty
@@ -175,20 +209,22 @@ async def extract_keywords(request: ResumeAnalysisRequest):
         
         logger.info("Extracting keywords from text")
         
-        top_keywords = keyword_analyzer.extract_top_keywords(request.resume_text, top_n=20)
+        top_keywords = keyword_analyzer.extract_top_keywords(request.resume_text, top_n=DEFAULT_TOP_N_KEYWORDS)
         
-        return {
-            "top_keywords": [{"keyword": kw, "frequency": freq} for kw, freq in top_keywords],
-            "total_unique_keywords": len(top_keywords)
-        }
+        return KeywordExtractResponse(
+            top_keywords=[{"keyword": kw, "frequency": freq} for kw, freq in top_keywords],
+            total_unique_keywords=len(top_keywords)
+        )
     
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error extracting keywords: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/keywords/analyze-jd", tags=["Keywords"])
-async def analyze_job_description(request: ResumeAnalysisRequest):
+@app.post("/keywords/analyze-jd", response_model=JobDescriptionAnalysisResponse, tags=["Keywords"])
+async def analyze_job_description(request: ResumeAnalysisRequest) -> JobDescriptionAnalysisResponse:
     """
     Analyze a job description to extract key requirements.
     
@@ -196,7 +232,7 @@ async def analyze_job_description(request: ResumeAnalysisRequest):
         request: ResumeAnalysisRequest with resume_text containing the job description
         
     Returns:
-        Dictionary with job description analysis including top keywords
+        JobDescriptionAnalysisResponse with top keywords and analysis
         
     Raises:
         HTTPException: If job description is empty
@@ -207,34 +243,38 @@ async def analyze_job_description(request: ResumeAnalysisRequest):
         
         logger.info("Analyzing job description")
         
-        analysis = keyword_analyzer.analyze_job_description(request.resume_text, top_n=30)
+        analysis = keyword_analyzer.analyze_job_description(request.resume_text, top_n=DEFAULT_JD_TOP_N)
         
-        return {
-            "top_keywords": [{"keyword": kw, "frequency": freq} for kw, freq in analysis["top_keywords"]],
-            "total_unique_keywords": analysis["total_keywords"],
-            "keyword_frequency": analysis["keyword_frequency"]
-        }
+        return JobDescriptionAnalysisResponse(
+            top_keywords=[{"keyword": kw, "frequency": freq} for kw, freq in analysis["top_keywords"]],
+            total_unique_keywords=analysis["total_keywords"],
+            keyword_frequency=analysis["keyword_frequency"]
+        )
     
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error analyzing job description: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/compare", tags=["Comparison"])
-async def compare_resume_to_jd(request: ResumeAnalysisRequest):
+@app.post("/compare", response_model=ComparisonMetrics, tags=["Comparison"])
+async def compare_resume_to_jd(request: ResumeAnalysisRequest) -> ComparisonMetrics:
     """
     Perform detailed comparison between resume and job description.
+    
+    Analyzes keyword matching, coverage, and provides similarity metrics.
     
     Args:
         request: ResumeAnalysisRequest with both resume_text and job_description
         
     Returns:
-        Dictionary with detailed comparison metrics including:
-        - Match score
+        ComparisonMetrics with detailed comparison including:
+        - Match score (0-1 scale)
         - Matched keywords
         - Missing keywords
         - Keyword coverage percentage
-        - Jaccard similarity
+        - Jaccard similarity score
         
     Raises:
         HTTPException: If either resume or job description is empty
@@ -252,19 +292,21 @@ async def compare_resume_to_jd(request: ResumeAnalysisRequest):
             request.job_description
         )
         
-        return {
-            "match_score": comparison["match_score"],
-            "matched_count": comparison["matched_count"],
-            "total_jd_keywords": comparison["total_jd_keywords"],
-            "missing_count": comparison["missing_count"],
-            "keyword_coverage_percentage": comparison["keyword_coverage"],
-            "jaccard_similarity": comparison["jaccard_similarity"],
-            "top_resume_keywords": [{"keyword": kw, "frequency": freq} for kw, freq in comparison["top_resume_keywords"]],
-            "top_jd_keywords": [{"keyword": kw, "frequency": freq} for kw, freq in comparison["top_jd_keywords"]],
-            "matched_keywords": comparison["intersection_keywords"],
-            "missing_keywords": comparison["missing_keywords"]
-        }
+        return ComparisonMetrics(
+            match_score=comparison["match_score"],
+            matched_count=comparison["matched_count"],
+            total_jd_keywords=comparison["total_jd_keywords"],
+            missing_count=comparison["missing_count"],
+            keyword_coverage_percentage=comparison["keyword_coverage"],
+            jaccard_similarity=comparison["jaccard_similarity"],
+            top_resume_keywords=[{"keyword": kw, "frequency": freq} for kw, freq in comparison["top_resume_keywords"]],
+            top_jd_keywords=[{"keyword": kw, "frequency": freq} for kw, freq in comparison["top_jd_keywords"]],
+            matched_keywords=comparison["intersection_keywords"],
+            missing_keywords=comparison["missing_keywords"]
+        )
     
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error comparing resume to job description: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

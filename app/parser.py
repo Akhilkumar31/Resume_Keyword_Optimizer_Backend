@@ -3,7 +3,6 @@
 import re
 import os
 from typing import Dict, List, Optional
-from pathlib import Path
 from app.schemas import ParsedResume
 
 try:

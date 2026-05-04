@@ -5,6 +5,14 @@ from typing import List, Dict, Tuple, Set
 from collections import Counter
 from app.schemas import KeywordMatch, ResumeAnalysis, KeywordSuggestion
 
+# Constants for keyword analysis
+MIN_KEYWORD_LENGTH = 3
+RELEVANCE_SCORE_DIVISOR = 5  # Used to normalize frequency to 0-1 score
+DEFAULT_TOP_N_KEYWORDS = 20
+DEFAULT_MISSING_KEYWORDS_LIMIT = 15
+SIMILARITY_CHECK_MIN_LENGTH = 4
+PARTIAL_MATCH_SCORE = 0.8
+
 
 class KeywordAnalyzer:
     """Analyzes keywords in resumes and job descriptions."""
@@ -108,7 +116,7 @@ class KeywordAnalyzer:
             'day', 'time', 'use', 'part', 'area', 'level'
         }
     
-    def extract_top_keywords(self, text: str, top_n: int = 20) -> List[Tuple[str, int]]:
+    def extract_top_keywords(self, text: str, top_n: int = DEFAULT_TOP_N_KEYWORDS) -> List[Tuple[str, int]]:
         """
         Extract top N most frequent meaningful keywords from text.
         
@@ -131,7 +139,7 @@ class KeywordAnalyzer:
         # Counter.most_common() returns list sorted by frequency (importance)
         return keywords.most_common(top_n)
     
-    def analyze_job_description(self, job_description: str, top_n: int = 30) -> Dict:
+    def analyze_job_description(self, job_description: str, top_n: int = DEFAULT_TOP_N_KEYWORDS) -> Dict:
         """
         Analyze job description to extract key information.
         
@@ -320,7 +328,7 @@ class KeywordAnalyzer:
             # 2. Must have length >= 3 (ignore very short words)
             # 3. Must not be purely numeric
             if (word not in self.stop_words and 
-                len(word) >= 3 and 
+                len(word) >= MIN_KEYWORD_LENGTH and 
                 not self._is_number(word)):
                 keywords.append(word)
         
@@ -349,7 +357,7 @@ class KeywordAnalyzer:
         for keyword in job_keywords:
             if keyword in resume_keywords:
                 # Exact match
-                relevance_score = min(resume_keywords[keyword] / 5, 1.0)
+                relevance_score = min(resume_keywords[keyword] / RELEVANCE_SCORE_DIVISOR, 1.0)
                 matched.append(KeywordMatch(
                     keyword=keyword,
                     frequency=resume_keywords[keyword],
@@ -359,7 +367,7 @@ class KeywordAnalyzer:
                 # Check for partial/similar matches
                 for resume_keyword in resume_keywords:
                     if self._keywords_similar(keyword, resume_keyword):
-                        relevance_score = min(resume_keywords[resume_keyword] / 5, 0.8)
+                        relevance_score = min(resume_keywords[resume_keyword] / RELEVANCE_SCORE_DIVISOR, PARTIAL_MATCH_SCORE)
                         matched.append(KeywordMatch(
                             keyword=keyword,
                             frequency=resume_keywords[resume_keyword],
@@ -378,20 +386,25 @@ class KeywordAnalyzer:
         unique_matched.sort(key=lambda x: x.relevance_score, reverse=True)
         return unique_matched
     
-    def _keywords_similar(self, kw1: str, kw2: str) -> bool:
+    def _keywords_similar(self, first_keyword: str, second_keyword: str) -> bool:
         """
         Check if two keywords are similar (e.g., singular/plural or variations).
         
+        Matches keywords using:
+        - Substring containment (e.g., 'java' in 'javascript')
+        - Common variations from predefined mapping
+        
         Args:
-            kw1: First keyword
-            kw2: Second keyword
+            first_keyword: First keyword to compare
+            second_keyword: Second keyword to compare
             
         Returns:
-            Boolean indicating similarity
+            Boolean indicating if keywords are similar
         """
         # Check for substring containment (e.g., 'java' in 'javascript')
-        if len(kw1) > 4 and len(kw2) > 4:
-            if kw1 in kw2 or kw2 in kw1:
+        # Only for reasonably long keywords to avoid false positives
+        if len(first_keyword) > SIMILARITY_CHECK_MIN_LENGTH and len(second_keyword) > SIMILARITY_CHECK_MIN_LENGTH:
+            if first_keyword in second_keyword or second_keyword in first_keyword:
                 return True
         
         # Check for common variations
@@ -411,7 +424,7 @@ class KeywordAnalyzer:
         }
         
         for main, alts in variations.items():
-            if (kw1 == main and kw2 in alts) or (kw2 == main and kw1 in alts):
+            if (first_keyword == main and second_keyword in alts) or (second_keyword == main and first_keyword in alts):
                 return True
         
         return False
@@ -437,7 +450,7 @@ class KeywordAnalyzer:
                 if not has_similar:
                     missing.append(keyword)
         
-        return missing[:15]  # Return top 15 missing keywords
+        return missing[:DEFAULT_MISSING_KEYWORDS_LIMIT]  # Return top N missing keywords
     
     def _calculate_match_score(
         self,
