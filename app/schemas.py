@@ -31,7 +31,7 @@ class ResumeAnalysis(BaseModel):
     matched_keywords: List[KeywordMatch]
     missing_keywords: List[str] = Field(default_factory=list)
     suggestions: dict = Field(default_factory=dict, description="Synonym suggestions for missing keywords (keyword -> list of synonyms)")
-    match_score: float = Field(..., ge=0.0, le=1.0)
+    match_score: float = Field(..., ge=0.0, le=100.0, description="Match score as percentage (0-100)")
     recommendations: List[str] = Field(default_factory=list)
 
 
@@ -83,7 +83,7 @@ class JobDescriptionAnalysisResponse(BaseModel):
 
 class ComparisonMetrics(BaseModel):
     """Schema for resume-to-JD comparison metrics."""
-    match_score: float = Field(..., ge=0.0, le=1.0, description="Overall match score")
+    match_score: float = Field(..., ge=0.0, le=100.0, description="Overall match score as percentage (0-100)")
     matched_count: int = Field(..., description="Number of matched keywords")
     total_jd_keywords: int = Field(..., description="Total unique keywords in job description")
     missing_count: int = Field(..., description="Number of missing keywords from resume")

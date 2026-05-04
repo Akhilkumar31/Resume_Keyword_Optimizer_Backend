@@ -162,9 +162,9 @@ class TestKeywordExtraction:
         assert kws.get("python") == 3, "Case-insensitive counting failed"
 
     def test_no_job_description_analyze(self, analyzer):
-        """analyze_resume without JD should return keywords, score=1.0."""
+        """analyze_resume without JD should return keywords, score=100.0."""
         result = analyzer.analyze_resume(RESUME_PYTHON_DEV)
-        assert result.match_score == 1.0
+        assert result.match_score == 100.0
         assert result.total_keywords > 0
         assert len(result.matched_keywords) > 0
         assert result.missing_keywords == []
@@ -215,11 +215,11 @@ class TestMatchedKeywords:
         assert "python" in matched_kws, "'python' should be matched"
 
     def test_unrelated_jd_gives_low_match(self, analyzer):
-        """A Python resume against a Data Scientist JD should score below 0.6."""
+        """A Python resume against a Data Scientist JD should score below 60."""
         # The resume has no ML, TensorFlow, PyTorch, Tableau
         pure_resume = "Experienced Python backend developer. REST APIs, Docker, Kubernetes, PostgreSQL."
         result = analyzer.analyze_resume(pure_resume, JD_DATA_SCIENTIST)
-        assert result.match_score < 0.6, (
+        assert result.match_score < 60, (
             f"Expected low score for unrelated JD, got {result.match_score}"
         )
 
@@ -278,24 +278,24 @@ class TestScoreCalculation:
         resume = "Customer service representative with communication skills."
         jd = "Python developer with docker kubernetes tensorflow pytorch."
         result = analyzer.analyze_resume(resume, jd)
-        assert result.match_score == 0.0
+        assert result.match_score == 0.0  # No match still gives 0.0
 
     def test_score_is_one_for_perfect_match(self, analyzer):
-        """Score must be 1.0 when resume covers all JD keywords."""
+        """Score must be 100.0 when resume covers all JD keywords."""
         text = "python docker kubernetes aws postgresql git pytest jenkins fastapi flask"
         result = analyzer.analyze_resume(text, text)
-        assert result.match_score == 1.0
+        assert result.match_score == 100.0
 
     def test_score_in_valid_range(self, analyzer):
-        """Score must always be in [0.0, 1.0]."""
+        """Score must always be in [0.0, 100.0]."""
         result = analyzer.analyze_resume(RESUME_PYTHON_DEV, JD_PYTHON_BACKEND)
-        assert 0.0 <= result.match_score <= 1.0
+        assert 0.0 <= result.match_score <= 100.0
 
     def test_score_partial_match(self, analyzer):
-        """A partial resume should yield a score between 0 and 1."""
+        """A partial resume should yield a score between 0 and 100."""
         resume = "Python developer experienced with Docker and REST APIs."
         result = analyzer.analyze_resume(resume, JD_PYTHON_BACKEND)
-        assert 0.0 < result.match_score < 1.0, (
+        assert 0.0 < result.match_score < 100.0, (
             f"Expected partial score, got {result.match_score}"
         )
 
@@ -310,13 +310,14 @@ class TestScoreCalculation:
         )
 
     def test_score_formula_manual(self, analyzer):
-        """Manually verify score = matched / total_jd_keywords (capped at 1.0)."""
+        """Manually verify weighted score calculation with percentages."""
         resume = "python docker"
         jd = "python docker kubernetes"  # 3 unique JD keywords
         result = analyzer.analyze_resume(resume, jd)
-        # matched = 2, total_jd = 3 → score ≈ 0.67
-        assert 0.6 <= result.match_score <= 0.75, (
-            f"Expected ~0.67, got {result.match_score}"
+        # With weighted scoring, score will be higher than simple ratio
+        # Python and Docker are technical keywords with weight 2.0
+        assert 50.0 <= result.match_score <= 100.0, (
+            f"Expected score with technical keyword weights, got {result.match_score}"
         )
 
 

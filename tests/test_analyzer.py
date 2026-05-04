@@ -203,7 +203,7 @@ class TestResumeJDComparison:
         """Test match score is calculated correctly."""
         comparison = analyzer.compare_resume_to_jd(sample_resume, sample_job_description)
         
-        assert 0.0 <= comparison['match_score'] <= 1.0
+        assert 0.0 <= comparison['match_score'] <= 100.0
     
     def test_keyword_coverage_percentage(self, analyzer, sample_resume, sample_job_description):
         """Test keyword coverage percentage calculation."""
@@ -246,7 +246,7 @@ class TestResumeJDComparison:
         comparison = analyzer.compare_resume_to_jd(text, text)
         
         # Perfect match should have high scores
-        assert comparison['match_score'] == 1.0
+        assert comparison['match_score'] == 100.0
         assert comparison['jaccard_similarity'] == 1.0
 
 
@@ -295,7 +295,7 @@ class TestAnalyzeResume:
         
         assert analysis.total_keywords > 0
         assert len(analysis.matched_keywords) > 0
-        assert analysis.match_score == 1.0  # Single resume analysis gives perfect score
+        assert analysis.match_score == 100.0  # Single resume analysis gives perfect score
     
     def test_analyze_with_jd(self, analyzer, sample_resume, sample_job_description):
         """Test analyzing resume with job description."""
@@ -303,7 +303,7 @@ class TestAnalyzeResume:
         
         assert analysis.total_keywords > 0
         assert len(analysis.matched_keywords) >= 0
-        assert 0 <= analysis.match_score <= 1.0
+        assert 0 <= analysis.match_score <= 100.0
         assert len(analysis.recommendations) > 0
     
     def test_recommendations_generated(self, analyzer, sample_resume, sample_job_description):

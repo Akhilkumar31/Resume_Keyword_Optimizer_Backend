@@ -13,6 +13,22 @@ DEFAULT_MISSING_KEYWORDS_LIMIT = 15
 SIMILARITY_CHECK_MIN_LENGTH = 4
 PARTIAL_MATCH_SCORE = 0.8
 
+# Technical keyword weights for improved scoring
+TECHNICAL_KEYWORDS = {
+    'python', 'javascript', 'typescript', 'react', 'vue', 'angular',
+    'node', 'nodejs', 'java', 'c++', 'c#', '.net', 'csharp',
+    'sql', 'mysql', 'postgresql', 'mongodb', 'redis', 'cassandra',
+    'docker', 'kubernetes', 'k8s', 'aws', 'azure', 'gcp',
+    'git', 'github', 'gitlab', 'jenkins', 'ci/cd', 'devops',
+    'fastapi', 'django', 'flask', 'spring', 'springboot',
+    'html', 'css', 'sass', 'scss', 'graphql', 'rest', 'api',
+    'machine learning', 'ml', 'ai', 'tensorflow', 'pytorch',
+    'data science', 'analytics', 'linux', 'unix', 'windows',
+    'microservices', 'linux', 'aws', 'azure', 'gcp', 'firebase'
+}
+TECHNICAL_KEYWORD_WEIGHT = 2.0  # Technical keywords count twice
+NORMAL_KEYWORD_WEIGHT = 1.0     # Normal keywords count once
+
 
 class KeywordAnalyzer:
     """Analyzes keywords in resumes and job descriptions."""
@@ -191,8 +207,8 @@ class KeywordAnalyzer:
         matched_keywords = self._find_matching_keywords(resume_keywords, job_keywords)
         missing_keywords = self._find_missing_keywords(resume_keywords, job_keywords)
         
-        # Calculate metrics
-        match_score = self._calculate_match_score(len(matched_keywords), len(job_keywords))
+        # Calculate metrics using improved scoring
+        match_score = self._calculate_match_score(matched_keywords, job_keywords)
         
         # Get top keywords from both
         top_resume_keywords = resume_keywords.most_common(15)
@@ -255,11 +271,8 @@ class KeywordAnalyzer:
             # Generate suggestions for missing keywords
             suggestions = self._get_suggestions_for_keywords(missing_keywords)
             
-            # Calculate match score
-            match_score = self._calculate_match_score(
-                len(matched_keywords),
-                len(job_keywords)
-            )
+            # Calculate match score using improved scoring logic
+            match_score = self._calculate_match_score(matched_keywords, job_keywords)
             
             # Generate recommendations
             recommendations = self._generate_recommendations(
@@ -277,7 +290,7 @@ class KeywordAnalyzer:
                 )
                 for keyword, count in resume_keywords.most_common(20)
             ]
-            match_score = 1.0
+            match_score = 100.0
         
         return ResumeAnalysis(
             total_keywords=len(resume_keywords),
@@ -342,6 +355,29 @@ class KeywordAnalyzer:
             return True
         except ValueError:
             return False
+    
+    def _get_keyword_weight(self, keyword: str) -> float:
+        """
+        Determine the weight of a keyword based on whether it's technical.
+        
+        Args:
+            keyword: The keyword to check
+            
+        Returns:
+            float: Weight factor (2.0 for technical, 1.0 for normal)
+        """
+        keyword_lower = keyword.lower()
+        
+        # Check if keyword is in technical keywords set
+        if keyword_lower in TECHNICAL_KEYWORDS:
+            return TECHNICAL_KEYWORD_WEIGHT
+        
+        # Check for partial matches (e.g., "python3" contains "python")
+        for tech_keyword in TECHNICAL_KEYWORDS:
+            if tech_keyword in keyword_lower or keyword_lower in tech_keyword:
+                return TECHNICAL_KEYWORD_WEIGHT
+        
+        return NORMAL_KEYWORD_WEIGHT
     
     def _find_matching_keywords(
         self,
@@ -454,15 +490,51 @@ class KeywordAnalyzer:
     
     def _calculate_match_score(
         self,
-        matched_count: int,
-        total_job_keywords: int
+        matched_keywords: List[KeywordMatch],
+        job_keywords: Counter
     ) -> float:
-        """Calculate the match score between resume and job description."""
-        if total_job_keywords == 0:
+        """
+        Calculate weighted match score based on keyword importance and frequency.
+        
+        Scoring logic:
+        - Technical keywords (Python, React, SQL, FastAPI, etc.) have weight 2.0
+        - Normal keywords have weight 1.0
+        - Keyword frequency from job description indicates importance
+        - Score is returned as percentage (0-100)
+        
+        Args:
+            matched_keywords: List of KeywordMatch objects from resume
+            job_keywords: Counter of keywords from job description
+            
+        Returns:
+            float: Match score as percentage (0-100)
+        """
+        if not job_keywords:
             return 0.0
         
-        score = min(matched_count / total_job_keywords, 1.0)
-        return round(score, 2)
+        # Calculate total weighted importance of matched keywords
+        matched_weight = 0.0
+        for match in matched_keywords:
+            keyword = match.keyword.lower()
+            # Get keyword importance (frequency in job description)
+            keyword_importance = job_keywords.get(keyword, 1)
+            # Get keyword weight (technical or normal)
+            keyword_weight = self._get_keyword_weight(keyword)
+            # Add weighted importance
+            matched_weight += keyword_importance * keyword_weight
+        
+        # Calculate total weighted importance of all job keywords
+        total_weight = 0.0
+        for keyword, frequency in job_keywords.items():
+            keyword_weight = self._get_keyword_weight(keyword)
+            total_weight += frequency * keyword_weight
+        
+        # Calculate score as percentage
+        if total_weight == 0:
+            return 0.0
+        
+        score_percentage = min((matched_weight / total_weight) * 100, 100.0)
+        return round(score_percentage, 2)
     
     def _generate_recommendations(
         self,
@@ -470,14 +542,24 @@ class KeywordAnalyzer:
         missing_keywords: List[str],
         match_score: float
     ) -> List[str]:
-        """Generate recommendations based on analysis."""
+        """
+        Generate recommendations based on analysis.
+        
+        Args:
+            matched_keywords: List of matched keywords
+            missing_keywords: List of missing keywords
+            match_score: Match score as percentage (0-100)
+            
+        Returns:
+            List of recommendation strings
+        """
         recommendations = []
         
-        if match_score < 0.3:
+        if match_score < 30:
             recommendations.append(
                 "Low match score. Consider adding more relevant keywords from the job description."
             )
-        elif match_score < 0.6:
+        elif match_score < 60:
             recommendations.append(
                 "Moderate match. Try to incorporate more job-specific keywords."
             )
