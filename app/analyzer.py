@@ -129,7 +129,11 @@ class KeywordAnalyzer:
             'including', 'ability', 'experience', 'required', 'preferred', 'must',
             'should', 'will', 'can', 'we', 'our', 'you', 'your', 'about', 'would',
             'help', 'make', 'provide', 'ensure', 'support', 'manage', 'perform',
-            'day', 'time', 'use', 'part', 'area', 'level'
+            'day', 'time', 'use', 'part', 'area', 'level',
+            # Generic qualifier words that dilute phrase quality
+            'skills', 'knowledge', 'proficiency', 'candidate', 'need', 'needs',
+            'requirements', 'understanding', 'background', 'expertise', 'strong',
+            'good', 'great', 'excellent', 'hands', 'solid', 'proven', 'plus'
         }
     
     def extract_top_keywords(self, text: str, top_n: int = DEFAULT_TOP_N_KEYWORDS) -> List[Tuple[str, int]]:
@@ -267,12 +271,19 @@ class KeywordAnalyzer:
             
             # Find missing keywords
             missing_keywords = self._find_missing_keywords(resume_keywords, job_keywords)
+
+            # --- Phrase matching ---
+            jd_phrases = self._extract_phrases(job_description)
+            matched_phrases, missing_phrases = self._match_phrases(resume_text, jd_phrases)
+            matched_keywords = matched_keywords + matched_phrases
+            missing_keywords = missing_keywords + missing_phrases
+            # ----------------------
             
             # Generate suggestions for missing keywords
             suggestions = self._get_suggestions_for_keywords(missing_keywords)
             
             # Calculate match score using improved scoring logic
-            match_score = self._calculate_match_score(matched_keywords, job_keywords)
+            match_score = self._calculate_match_score(matched_keywords, job_keywords, jd_phrases)
             
             # Generate recommendations
             recommendations = self._generate_recommendations(
@@ -491,7 +502,8 @@ class KeywordAnalyzer:
     def _calculate_match_score(
         self,
         matched_keywords: List[KeywordMatch],
-        job_keywords: Counter
+        job_keywords: Counter,
+        jd_phrases: Counter = None
     ) -> float:
         """
         Calculate weighted match score based on keyword importance and frequency.
@@ -511,29 +523,47 @@ class KeywordAnalyzer:
         """
         if not job_keywords:
             return 0.0
-        
-        # Calculate total weighted importance of matched keywords
+
+        # Separate single-word matches from phrase matches for scoring
+        phrase_set = set(jd_phrases.keys()) if jd_phrases else set()
+
+        # Calculate total weighted importance of matched keywords (single words)
         matched_weight = 0.0
+        matched_phrase_weight = 0.0
         for match in matched_keywords:
             keyword = match.keyword.lower()
-            # Get keyword importance (frequency in job description)
-            keyword_importance = job_keywords.get(keyword, 1)
-            # Get keyword weight (technical or normal)
-            keyword_weight = self._get_keyword_weight(keyword)
-            # Add weighted importance
-            matched_weight += keyword_importance * keyword_weight
+            if keyword in phrase_set:
+                # Phrases score proportionally to their JD frequency
+                matched_phrase_weight += jd_phrases.get(keyword, 1)
+            else:
+                keyword_importance = job_keywords.get(keyword, 1)
+                keyword_weight = self._get_keyword_weight(keyword)
+                matched_weight += keyword_importance * keyword_weight
         
-        # Calculate total weighted importance of all job keywords
-        total_weight = 0.0
+        # Calculate total weighted importance of all single-word job keywords
+        total_keyword_weight = 0.0
         for keyword, frequency in job_keywords.items():
             keyword_weight = self._get_keyword_weight(keyword)
-            total_weight += frequency * keyword_weight
-        
-        # Calculate score as percentage
-        if total_weight == 0:
-            return 0.0
-        
-        score_percentage = min((matched_weight / total_weight) * 100, 100.0)
+            total_keyword_weight += frequency * keyword_weight
+
+        total_phrase_weight = sum(jd_phrases.values()) if jd_phrases else 0
+
+        if total_phrase_weight > 0:
+            # Phrases contribute 20 %, keywords contribute 80 %
+            phrase_score = min((matched_phrase_weight / total_phrase_weight) * 20.0, 20.0)
+            keyword_score = (
+                min((matched_weight / total_keyword_weight) * 80.0, 80.0)
+                if total_keyword_weight > 0 else 0.0
+            )
+        else:
+            # No phrases available — keywords contribute the full 100 %
+            phrase_score = 0.0
+            keyword_score = (
+                min((matched_weight / total_keyword_weight) * 100.0, 100.0)
+                if total_keyword_weight > 0 else 0.0
+            )
+
+        score_percentage = min(keyword_score + phrase_score, 100.0)
         return round(score_percentage, 2)
     
     def _generate_recommendations(
@@ -604,3 +634,75 @@ class KeywordAnalyzer:
                         break
         
         return suggestions
+
+    # ------------------------------------------------------------------
+    # Phrase matching helpers
+    # ------------------------------------------------------------------
+
+    def _extract_phrases(self, text: str) -> Counter:
+        """
+        Extract meaningful 2-3 word phrases (n-grams) from text.
+
+        A phrase is kept only when at least one of its words is NOT a
+        stop word, ensuring that phrases like "machine learning" or
+        "data analysis" are retained while noise phrases are dropped.
+
+        Args:
+            text: Source text (job description or resume)
+
+        Returns:
+            Counter mapping phrase -> occurrence count
+        """
+        # Normalise: lowercase and strip to plain words only
+        normalised = re.sub(r'[^a-z0-9\s]', ' ', text.lower())
+        tokens = normalised.split()
+
+        phrases: Counter = Counter()
+        for n in (2, 3):  # bigrams then trigrams
+            for i in range(len(tokens) - n + 1):
+                gram = tokens[i:i + n]
+                # Keep phrase only when ALL words are meaningful (non-stop, length >= 3)
+                # This prevents noise like "we need" or "a candidate" from appearing
+                if all(w not in self.stop_words and len(w) >= MIN_KEYWORD_LENGTH for w in gram):
+                    phrase = ' '.join(gram)
+                    phrases[phrase] += 1
+
+        return phrases
+
+    def _match_phrases(
+        self,
+        resume_text: str,
+        jd_phrases: Counter,
+    ) -> Tuple[List[KeywordMatch], List[str]]:
+        """
+        Check which job-description phrases appear in the resume text.
+
+        Matching is done as a substring check on the normalised resume
+        text so that word boundaries and minor spacing differences are
+        handled gracefully.
+
+        Args:
+            resume_text: Full resume text
+            jd_phrases: Counter of phrases extracted from job description
+
+        Returns:
+            Tuple of (matched_phrases, missing_phrases)
+        """
+        normalised_resume = re.sub(r'[^a-z0-9\s]', ' ', resume_text.lower())
+
+        matched: List[KeywordMatch] = []
+        missing: List[str] = []
+
+        # Only consider the top phrases by frequency to keep output focused
+        for phrase, freq in jd_phrases.most_common(30):
+            if phrase in normalised_resume:
+                relevance = min(freq / RELEVANCE_SCORE_DIVISOR, 1.0)
+                matched.append(KeywordMatch(
+                    keyword=phrase,
+                    frequency=normalised_resume.count(phrase),
+                    relevance_score=relevance,
+                ))
+            else:
+                missing.append(phrase)
+
+        return matched, missing
