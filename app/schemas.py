@@ -113,3 +113,16 @@ class ComparisonMetrics(BaseModel):
         default_factory=list,
         description="Keywords from job description not found in resume"
     )
+
+
+class FetchJobDescriptionRequest(BaseModel):
+    """Request schema for fetching job description from URL."""
+    url: str = Field(..., description="The URL to fetch the job description from")
+
+
+class FetchJobDescriptionResponse(BaseModel):
+    """Response schema for fetched job description."""
+    url: str = Field(..., description="The original URL that was fetched")
+    job_description: str = Field(..., description="The extracted job description text")
+    title: Optional[str] = Field(None, description="The page title if available")
+    status: str = Field(default="success", description="Status of the fetch operation")
