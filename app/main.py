@@ -6,8 +6,6 @@ from fastapi.responses import JSONResponse
 from typing import Optional
 import logging
 import requests
-from bs4 import BeautifulSoup
-from urllib.parse import urlparse
 
 from app.schemas import (
     ResumeAnalysisRequest, 
@@ -20,6 +18,7 @@ from app.schemas import (
 )
 from app.parser import ResumeParser
 from app.analyzer import KeywordAnalyzer
+from app.scraper import scrape_job_description
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -335,69 +334,30 @@ async def fetch_job_description(request: FetchJobDescriptionRequest) -> FetchJob
         HTTPException: If URL is invalid or request fails
     """
     try:
-        url = request.url.strip()
-        
-        # Validate URL format
-        if not url:
-            raise HTTPException(status_code=400, detail="URL cannot be empty")
-        
-        parsed_url = urlparse(url)
-        if not parsed_url.scheme:
-            url = "https://" + url
-        if not parsed_url.netloc and not urlparse(url).netloc:
-            raise HTTPException(status_code=400, detail="Invalid URL format")
-        
-        logger.info(f"Fetching job description from URL: {url}")
-        
-        # Fetch the webpage
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        }
-        
-        try:
-            response = requests.get(url, timeout=10, headers=headers)
-            response.raise_for_status()
-        except requests.exceptions.Timeout:
-            raise HTTPException(status_code=408, detail="Request timeout: The URL took too long to respond")
-        except requests.exceptions.ConnectionError:
-            raise HTTPException(status_code=503, detail="Connection error: Unable to reach the URL")
-        except requests.exceptions.HTTPError as e:
-            raise HTTPException(status_code=response.status_code, detail=f"HTTP error: {response.status_code}")
-        except requests.exceptions.RequestException as e:
-            raise HTTPException(status_code=400, detail=f"Request error: {str(e)}")
-        
-        # Parse HTML content
-        soup = BeautifulSoup(response.content, "html.parser")
-        
-        # Extract page title
-        title = None
-        if soup.title:
-            title = soup.title.string
-        elif soup.find("h1"):
-            title = soup.find("h1").get_text()
-        
-        # Remove script and style elements
-        for script in soup(["script", "style", "nav", "footer", "header"]):
-            script.decompose()
-        
-        # Get text content
-        text = soup.get_text()
-        
-        # Clean up text: remove extra whitespace and newlines
-        lines = (line.strip() for line in text.splitlines())
-        chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-        job_description = "\n".join(chunk for chunk in chunks if chunk)
-        
-        if not job_description or len(job_description.strip()) == 0:
-            raise HTTPException(status_code=400, detail="No text content found on the webpage")
-        
+        logger.info(f"Fetching job description from URL: {request.url}")
+
+        job_description, title = scrape_job_description(request.url)
+
         return FetchJobDescriptionResponse(
             url=request.url,
             job_description=job_description,
             title=title,
             status="success"
         )
-    
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except requests.exceptions.Timeout:
+        raise HTTPException(status_code=408, detail="Request timeout: The URL took too long to respond")
+    except requests.exceptions.ConnectionError:
+        raise HTTPException(status_code=503, detail="Connection error: Unable to reach the URL")
+    except requests.exceptions.HTTPError as e:
+        status_code = e.response.status_code if e.response is not None else 502
+        raise HTTPException(status_code=status_code, detail=f"HTTP error from target URL: {status_code}")
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(status_code=400, detail=f"Request error: {str(e)}")
+    except RuntimeError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:
