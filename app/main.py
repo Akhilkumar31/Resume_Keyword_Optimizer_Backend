@@ -2,7 +2,7 @@
 
 from fastapi import FastAPI, HTTPException, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from typing import Optional
 import logging
 import requests
@@ -14,7 +14,8 @@ from app.schemas import (
     JobDescriptionAnalysisResponse,
     ComparisonMetrics,
     FetchJobDescriptionRequest,
-    FetchJobDescriptionResponse
+    FetchJobDescriptionResponse,
+    ReportRequest
 )
 from app.parser import ResumeParser
 from app.analyzer import KeywordAnalyzer
@@ -363,6 +364,93 @@ async def fetch_job_description(request: FetchJobDescriptionRequest) -> FetchJob
     except Exception as e:
         logger.error(f"Error fetching job description: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@app.post("/download-report", tags=["Report"])
+async def download_report(request: ReportRequest) -> PlainTextResponse:
+    """
+    Generate a downloadable plain-text resume analysis report.
+
+    Args:
+        request: ReportRequest containing analysis results
+
+    Returns:
+        PlainTextResponse with Content-Disposition header for file download
+    """
+    lines = [
+        "=" * 60,
+        "       RESUME ANALYSIS REPORT",
+        "=" * 60,
+        "",
+        f"MATCH SCORE: {request.match_score:.1f}%",
+        "",
+        "-" * 60,
+        "MATCHED KEYWORDS",
+        "-" * 60,
+    ]
+
+    if request.matched_keywords:
+        for item in request.matched_keywords:
+            keyword = item.get("keyword", "")
+            frequency = item.get("frequency", "")
+            relevance = item.get("relevance_score", "")
+            lines.append(f"  - {keyword}  (frequency: {frequency}, relevance: {relevance})")
+    else:
+        lines.append("  None")
+
+    lines += [
+        "",
+        "-" * 60,
+        "MISSING KEYWORDS",
+        "-" * 60,
+    ]
+
+    if request.missing_keywords:
+        for kw in request.missing_keywords:
+            lines.append(f"  - {kw}")
+    else:
+        lines.append("  None")
+
+    lines += [
+        "",
+        "-" * 60,
+        "KEYWORD SUGGESTIONS",
+        "-" * 60,
+    ]
+
+    if request.suggestions:
+        for keyword, synonyms in request.suggestions.items():
+            synonym_list = ", ".join(synonyms) if isinstance(synonyms, list) else str(synonyms)
+            lines.append(f"  {keyword}: {synonym_list}")
+    else:
+        lines.append("  None")
+
+    lines += [
+        "",
+        "-" * 60,
+        "RECOMMENDATIONS",
+        "-" * 60,
+    ]
+
+    if request.recommendations:
+        for i, rec in enumerate(request.recommendations, start=1):
+            lines.append(f"  {i}. {rec}")
+    else:
+        lines.append("  None")
+
+    lines += [
+        "",
+        "=" * 60,
+        "End of Report",
+        "=" * 60,
+    ]
+
+    report_text = "\n".join(lines)
+
+    return PlainTextResponse(
+        content=report_text,
+        headers={"Content-Disposition": "attachment; filename=\"resume_analysis_report.txt\""},
+    )
 
 
 @app.exception_handler(HTTPException)

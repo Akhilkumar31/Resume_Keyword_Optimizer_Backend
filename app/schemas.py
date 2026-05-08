@@ -53,6 +53,15 @@ class JobDescriptionAnalysis(BaseModel):
     nice_to_have_keywords: List[str]
 
 
+class ReportRequest(BaseModel):
+    """Request schema for downloading a resume analysis report."""
+    match_score: float = Field(..., ge=0.0, le=100.0, description="Match score as percentage")
+    matched_keywords: List[Dict[str, Any]] = Field(default_factory=list)
+    missing_keywords: List[str] = Field(default_factory=list)
+    suggestions: Dict[str, Any] = Field(default_factory=dict)
+    recommendations: List[str] = Field(default_factory=list)
+
+
 class KeywordExtractResponse(BaseModel):
     """Response schema for keyword extraction endpoint."""
     top_keywords: List[Dict[str, Any]] = Field(
