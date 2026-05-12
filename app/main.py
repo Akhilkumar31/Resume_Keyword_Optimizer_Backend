@@ -1,6 +1,6 @@
 """FastAPI application entry point for Resume Keyword Optimizer."""
 
-from fastapi import FastAPI, HTTPException, File, UploadFile
+from fastapi import FastAPI, HTTPException, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 from typing import Optional
@@ -80,25 +80,176 @@ async def analyze_resume(request: ResumeAnalysisRequest) -> ResumeAnalysis:
         ResumeAnalysis: Analysis results with keyword matching and recommendations
         
     Raises:
-        HTTPException: If resume text is empty
+        HTTPException: If resume text is empty or job description is empty when provided
     """
     try:
-        if not request.resume_text.strip():
+        # Validate resume text
+        if not request.resume_text or not request.resume_text.strip():
             raise HTTPException(status_code=400, detail="Resume text cannot be empty")
+        
+        # Validate job description if provided
+        if request.job_description is not None:
+            if not request.job_description.strip():
+                raise HTTPException(status_code=400, detail="Job description cannot be empty if provided")
         
         logger.info("Analyzing resume")
         
         # Analyze the resume
         analysis = keyword_analyzer.analyze_resume(
             request.resume_text,
-            request.job_description
+            request.job_description if request.job_description and request.job_description.strip() else None
         )
         
         return analysis
     
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error analyzing resume: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/analyze/file", response_model=ResumeAnalysis, tags=["Analysis"])
+async def analyze_resume_file(
+    resume: UploadFile = File(..., description="Resume file (.txt, .pdf, or .docx)"),
+    job_description: Optional[str] = Form(None, description="Optional job description text")
+) -> ResumeAnalysis:
+    """
+    Analyze a resume file and optionally match against a job description.
+    
+    Accepts resume as a file upload (.txt, .pdf, .docx) and job description as form data.
+    
+    Args:
+        resume: Resume file to analyze (required)
+        job_description: Optional job description text for matching
+        
+    Returns:
+        ResumeAnalysis: Analysis results with score, matched keywords, missing keywords, and suggestions
+        
+    Raises:
+        HTTPException: If resume file is invalid, empty, or unsupported format
+        HTTPException: If job description is provided but empty
+    """
+    try:
+        # Validate resume file exists
+        if not resume:
+            raise HTTPException(status_code=400, detail="Resume file is required")
+        
+        if not resume.filename:
+            raise HTTPException(status_code=400, detail="No file provided")
+        
+        # Check file extension
+        file_extension = resume.filename.lower().split('.')[-1]
+        if f".{file_extension}" not in SUPPORTED_FILE_FORMATS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Only {', '.join(SUPPORTED_FILE_FORMATS)} files are supported. Got: .{file_extension}"
+            )
+        
+        # Read file content
+        content = await resume.read()
+        
+        # Check file size
+        if len(content) > MAX_UPLOAD_SIZE:
+            raise HTTPException(
+                status_code=413,
+                detail="File size exceeds maximum allowed size of 5MB"
+            )
+        
+        # Extract resume text based on file format
+        if file_extension == 'txt':
+            try:
+                resume_text = content.decode('utf-8')
+            except UnicodeDecodeError:
+                try:
+                    resume_text = content.decode('latin-1')
+                except UnicodeDecodeError:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Text file must be valid UTF-8 or Latin-1 encoded"
+                    )
+        elif file_extension == 'pdf':
+            try:
+                import pdfplumber
+                import tempfile
+                # Write to temporary file for pdfplumber
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp:
+                    tmp.write(content)
+                    tmp_path = tmp.name
+                
+                text = ""
+                with pdfplumber.open(tmp_path) as pdf:
+                    if not pdf.pages:
+                        raise HTTPException(status_code=400, detail="PDF file is empty or cannot be read")
+                    for page in pdf.pages:
+                        extracted_text = page.extract_text()
+                        if extracted_text:
+                            text += extracted_text + "\n"
+                
+                resume_text = text.strip()
+                
+                # Clean up temp file
+                import os as os_module
+                os_module.unlink(tmp_path)
+                
+                if not resume_text:
+                    raise HTTPException(status_code=400, detail="PDF file contains no readable text")
+            except HTTPException:
+                raise
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Error reading PDF file: {str(e)}")
+        elif file_extension == 'docx':
+            try:
+                from docx import Document
+                import tempfile
+                # Write to temporary file for python-docx
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as tmp:
+                    tmp.write(content)
+                    tmp_path = tmp.name
+                
+                doc = Document(tmp_path)
+                text = ""
+                for paragraph in doc.paragraphs:
+                    text += paragraph.text + "\n"
+                
+                resume_text = text.strip()
+                
+                # Clean up temp file
+                import os as os_module
+                os_module.unlink(tmp_path)
+                
+                if not resume_text:
+                    raise HTTPException(status_code=400, detail="DOCX file contains no readable text")
+            except HTTPException:
+                raise
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Error reading DOCX file: {str(e)}")
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported file format: .{file_extension}")
+        
+        # Validate resume text
+        if not resume_text.strip():
+            raise HTTPException(status_code=400, detail="Resume file is empty or contains no readable text")
+        
+        # Validate job description if provided
+        if job_description is not None and not job_description.strip():
+            raise HTTPException(status_code=400, detail="Job description cannot be empty if provided")
+        
+        logger.info(f"Analyzing resume file: {resume.filename}")
+        
+        # Analyze the resume
+        analysis = keyword_analyzer.analyze_resume(
+            resume_text,
+            job_description if job_description and job_description.strip() else None
+        )
+        
+        return analysis
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error analyzing resume file: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 @app.post("/parse", tags=["Parsing"])
@@ -146,17 +297,20 @@ async def upload_resume(file: UploadFile = File(...)):
         Parsed resume data with sections, contact info, skills, experience, and education
         
     Raises:
-        HTTPException: If file type is not supported or file is too large
+        HTTPException: If file type is not supported or file is too large or empty
     """
     try:
         if not file.filename:
             raise HTTPException(status_code=400, detail="No file provided")
         
+        # Get file extension
+        file_extension = file.filename.lower().split('.')[-1]
+        
         # Check file type
-        if not file.filename.endswith(SUPPORTED_FILE_FORMATS):
+        if f".{file_extension}" not in SUPPORTED_FILE_FORMATS:
             raise HTTPException(
                 status_code=400,
-                detail=f"Only {', '.join(SUPPORTED_FILE_FORMATS)} files are supported"
+                detail=f"Only {', '.join(SUPPORTED_FILE_FORMATS)} files are supported. Got: .{file_extension}"
             )
         
         # Read file content
@@ -166,21 +320,85 @@ async def upload_resume(file: UploadFile = File(...)):
         if len(content) > MAX_UPLOAD_SIZE:
             raise HTTPException(
                 status_code=413,
-                detail=f"File size exceeds maximum allowed size of 5MB"
+                detail="File size exceeds maximum allowed size of 5MB"
             )
         
-        # Handle text file decoding
-        try:
-            text_content = content.decode('utf-8')
-        except UnicodeDecodeError:
-            # Try alternative encoding if UTF-8 fails
+        # Extract resume text based on file format
+        if file_extension == 'txt':
             try:
-                text_content = content.decode('latin-1')
+                text_content = content.decode('utf-8')
             except UnicodeDecodeError:
-                raise HTTPException(
-                    status_code=400,
-                    detail="File must be valid UTF-8 or Latin-1 encoded text"
-                )
+                try:
+                    text_content = content.decode('latin-1')
+                except UnicodeDecodeError:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Text file must be valid UTF-8 or Latin-1 encoded"
+                    )
+        elif file_extension == 'pdf':
+            try:
+                import pdfplumber
+                import tempfile
+                # Write to temporary file for pdfplumber
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp:
+                    tmp.write(content)
+                    tmp_path = tmp.name
+                
+                text = ""
+                with pdfplumber.open(tmp_path) as pdf:
+                    if not pdf.pages:
+                        raise HTTPException(status_code=400, detail="PDF file is empty or cannot be read")
+                    for page in pdf.pages:
+                        extracted_text = page.extract_text()
+                        if extracted_text:
+                            text += extracted_text + "\n"
+                
+                text_content = text.strip()
+                
+                # Clean up temp file
+                import os as os_module
+                os_module.unlink(tmp_path)
+                
+                if not text_content:
+                    raise HTTPException(status_code=400, detail="PDF file contains no readable text")
+            except HTTPException:
+                raise
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Error reading PDF file: {str(e)}")
+        elif file_extension == 'docx':
+            try:
+                from docx import Document
+                import tempfile
+                # Write to temporary file for python-docx
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as tmp:
+                    tmp.write(content)
+                    tmp_path = tmp.name
+                
+                doc = Document(tmp_path)
+                text = ""
+                for paragraph in doc.paragraphs:
+                    text += paragraph.text + "\n"
+                
+                text_content = text.strip()
+                
+                # Clean up temp file
+                import os as os_module
+                os_module.unlink(tmp_path)
+                
+                if not text_content:
+                    raise HTTPException(status_code=400, detail="DOCX file contains no readable text")
+            except HTTPException:
+                raise
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Error reading DOCX file: {str(e)}")
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported file format: .{file_extension}")
+        
+        # Validate text content
+        if not text_content or not text_content.strip():
+            raise HTTPException(status_code=400, detail="File is empty or contains no readable text")
+        
+        logger.info(f"Uploading resume file: {file.filename}")
         
         # Parse the resume
         parsed = resume_parser.parse(text_content)
